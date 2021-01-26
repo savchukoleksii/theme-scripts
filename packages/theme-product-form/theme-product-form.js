@@ -1,7 +1,7 @@
-import Listeners from './listeners';
-import { getVariantFromSerializedArray } from '@shopify/theme-product';
+import Listeners from "./listeners";
+import { getVariantFromSerializedArray } from "@shopify/theme-product";
 
-var selectors = {
+let selectors = {
   idInput: '[name="id"]',
   optionInput: '[name^="options"]',
   quantityInput: '[name="quantity"]',
@@ -21,12 +21,12 @@ var selectors = {
 
 export function getUrlWithVariant(url, id) {
   if (/variant=/.test(url)) {
-    return url.replace(/(variant=)[^&]+/, '$1' + id);
+    return url.replace(/(variant=)[^&]+/, "$1" + id);
   } else if (/\?/.test(url)) {
-    return url.concat('&variant=').concat(id);
+    return url.concat("&variant=").concat(id);
   }
 
-  return url.concat('?variant=').concat(id);
+  return url.concat("?variant=").concat(id);
 }
 
 /**
@@ -39,41 +39,71 @@ export function getUrlWithVariant(url, id) {
  * @param {Function} options.onQuantityChange - Callback for whenever an quantity input changes
  * @param {Function} options.onPropertyChange - Callback for whenever a property input changes
  * @param {Function} options.onFormSubmit - Callback for whenever the product form is submitted
+ * @param {Function} options.selectors - Optional custom selectors object
  */
-export function ProductForm(element, product, options) {
+export function ProductForm(element, product, options = {}) {
   this.element = element;
   this.product = _validateProductObject(product);
 
-  options = options || {};
+  if(!options) {
+    options = {}
+  }
+
+  if (options.selectors) {
+    selectors = {
+      ...selectors,
+      ...options.selectors
+    };
+  }
+
+  this._idInput = this.element.querySelector(selectors.idInput);
+  if(!this._idInput) {
+    throw new Error("element must contain id input");
+  }
 
   this._listeners = new Listeners();
-  this._listeners.add(
-    this.element,
-    'submit',
-    this._onSubmit.bind(this, options)
-  );
 
   this.optionInputs = this._initInputs(
-    selectors.optionInput,
-    options.onOptionChange
+      selectors.optionInput,
+      this._onOptionChange.bind(this, options)
   );
 
-  this.quantityInputs = this._initInputs(
-    selectors.quantityInput,
-    options.onQuantityChange
-  );
+  if(options.onFormSubmit) {
+    this._listeners.add(
+        this.element,
+        "submit",
+        this._onSubmit.bind(this, options)
+    );
+  }
 
-  this.propertyInputs = this._initInputs(
-    selectors.propertyInput,
-    options.onPropertyChange
-  );
+  if (options.onQuantityChange) {
+    this.quantityInputs = this._initInputs(
+        selectors.quantityInput,
+        options.onQuantityChange
+    );
+  }
+
+  if (options.onPropertyChange) {
+    this.propertyInputs = this._initInputs(
+        selectors.propertyInput,
+        options.onPropertyChange
+    );
+  }
 }
 
 /**
  * Cleans up all event handlers that were assigned when the Product Form was constructed.
  * Useful for use when a section needs to be reloaded in the theme editor.
  */
-ProductForm.prototype.destroy = function() {
+ProductForm.prototype.init = function () {
+  this._listeners.removeAll();
+};
+
+/**
+ * Cleans up all event handlers that were assigned when the Product Form was constructed.
+ * Useful for use when a section needs to be reloaded in the theme editor.
+ */
+ProductForm.prototype.destroy = function () {
   this._listeners.removeAll();
 };
 
@@ -82,9 +112,9 @@ ProductForm.prototype.destroy = function() {
  *
  * @returns {Array} An array of option values
  */
-ProductForm.prototype.options = function() {
-  return _serializeOptionValues(this.optionInputs, function(item) {
-    var regex = /(?:^(options\[))(.*?)(?:\])/;
+ProductForm.prototype.options = function () {
+  return _serializeOptionValues(this.optionInputs, function (item) {
+    let regex = /(?:^(options\[))(.*?)(?:\])/;
     item.name = regex.exec(item.name)[2]; // Use just the value between 'options[' and ']'
     return item;
   });
@@ -96,7 +126,7 @@ ProductForm.prototype.options = function() {
  *
  * @returns {Object|null} Variant object
  */
-ProductForm.prototype.variant = function() {
+ProductForm.prototype.variant = function () {
   return getVariantFromSerializedArray(this.product, this.options());
 };
 
@@ -106,14 +136,14 @@ ProductForm.prototype.variant = function() {
  *
  * @returns {Array} Collection of objects with name and value keys
  */
-ProductForm.prototype.properties = function() {
-  var properties = _serializePropertyValues(this.propertyInputs, function(
-    propertyName
-  ) {
-    var regex = /(?:^(properties\[))(.*?)(?:\])/;
-    var name = regex.exec(propertyName)[2]; // Use just the value between 'properties[' and ']'
-    return name;
-  });
+ProductForm.prototype.properties = function () {
+  let properties = _serializePropertyValues(
+      this.propertyInputs,
+      function (propertyName) {
+        let regex = /(?:^(properties\[))(.*?)(?:])/;
+        return regex.exec(propertyName)[2];
+      }
+  );
 
   return Object.entries(properties).length === 0 ? null : properties;
 };
@@ -124,64 +154,63 @@ ProductForm.prototype.properties = function() {
  *
  * @returns {Array} Collection of objects with name and value keys
  */
-ProductForm.prototype.quantity = function() {
+ProductForm.prototype.quantity = function () {
   return this.quantityInputs[0]
-    ? Number.parseInt(this.quantityInputs[0].value, 10)
-    : 1;
+      ? Number.parseInt(this.quantityInputs[0].value, 10)
+      : 1;
 };
 
 // Private Methods
 // -----------------------------------------------------------------------------
-ProductForm.prototype._setIdInputValue = function(value) {
-  var idInputElement = this.element.querySelector(selectors.idInput);
-
-  if (!idInputElement) {
-    idInputElement = document.createElement('input');
-    idInputElement.type = 'hidden';
-    idInputElement.name = 'id';
-    this.element.appendChild(idInputElement);
-  }
-
-  idInputElement.value = value.toString();
+ProductForm.prototype._setIdInputValue = function (value) {
+  this._idInput.value = value.toString();
 };
 
-ProductForm.prototype._onSubmit = function(options, event) {
+ProductForm.prototype._onOptionChange = function (options, event) {
   event.dataset = this._getProductFormEventData();
 
   if (event.dataset.variant) {
     this._setIdInputValue(event.dataset.variant.id);
   }
 
+  if (options.onOptionChange) {
+    options.onOptionChange(event);
+  }
+};
+
+ProductForm.prototype._onSubmit = function (options, event) {
+  event.dataset = this._getProductFormEventData();
+
   if (options.onFormSubmit) {
     options.onFormSubmit(event);
   }
 };
 
-ProductForm.prototype._onFormEvent = function(cb) {
-  if (typeof cb === 'undefined') {
+ProductForm.prototype._onFormEvent = function (cb) {
+  if (typeof cb === "undefined") {
     return Function.prototype;
   }
 
-  return function(event) {
+  return function (event) {
     event.dataset = this._getProductFormEventData();
     cb(event);
   }.bind(this);
 };
 
-ProductForm.prototype._initInputs = function(selector, cb) {
-  var elements = Array.prototype.slice.call(
-    this.element.querySelectorAll(selector)
+ProductForm.prototype._initInputs = function (selector, cb) {
+  let elements = Array.prototype.slice.call(
+      this.element.querySelectorAll(selector)
   );
 
   return elements.map(
-    function(element) {
-      this._listeners.add(element, 'change', this._onFormEvent(cb));
-      return element;
-    }.bind(this)
+      function (element) {
+        this._listeners.add(element, "change", this._onFormEvent(cb));
+        return element;
+      }.bind(this)
   );
 };
 
-ProductForm.prototype._getProductFormEventData = function() {
+ProductForm.prototype._getProductFormEventData = function () {
   return {
     options: this.options(),
     variant: this.variant(),
@@ -191,10 +220,10 @@ ProductForm.prototype._getProductFormEventData = function() {
 };
 
 function _serializeOptionValues(inputs, transform) {
-  return inputs.reduce(function(options, input) {
+  return inputs.reduce(function (options, input) {
     if (
-      input.checked || // If input is a checked (means type radio or checkbox)
-      (input.type !== 'radio' && input.type !== 'checkbox') // Or if its any other type of input
+        input.checked || // If input is a checked (means type radio or checkbox)
+        (input.type !== "radio" && input.type !== "checkbox") // Or if its any other type of input
     ) {
       options.push(transform({ name: input.name, value: input.value }));
     }
@@ -204,10 +233,10 @@ function _serializeOptionValues(inputs, transform) {
 }
 
 function _serializePropertyValues(inputs, transform) {
-  return inputs.reduce(function(properties, input) {
+  return inputs.reduce(function (properties, input) {
     if (
-      input.checked || // If input is a checked (means type radio or checkbox)
-      (input.type !== 'radio' && input.type !== 'checkbox') // Or if its any other type of input
+        input.checked || // If input is a checked (means type radio or checkbox)
+        (input.type !== "radio" && input.type !== "checkbox") // Or if its any other type of input
     ) {
       properties[transform(input.name)] = input.value;
     }
@@ -217,15 +246,17 @@ function _serializePropertyValues(inputs, transform) {
 }
 
 function _validateProductObject(product) {
-  if (typeof product !== 'object') {
-    throw new TypeError(product + ' is not an object.');
+  if (typeof product !== "object") {
+    throw new TypeError(product + " is not an object.");
   }
 
-  if (typeof product.variants[0].options === 'undefined') {
+  if (typeof product.variants[0].options === "undefined") {
     throw new TypeError(
-      'Product object is invalid. Make sure you use the product object that is output from {{ product | json }} or from the http://[your-product-url].js route'
+        "Product object is invalid. Make sure you use the product object that is output from {{ product | json }} or from the http://[your-product-url].js route"
     );
   }
 
   return product;
 }
+
+export default ProductForm;
